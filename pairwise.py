@@ -1,145 +1,164 @@
-from itertools import product
-import random
+from copy import copy
+from random import seed, shuffle
+import sys
 
-filename = "input.txt"
 
-poolSize = 20
 
-legalValues = []
-parameterPositions = []
-parameterValues = []
-parameterNames = []
-allPairsDisplay = []
-unusedPairs = []
-unusedPairsSearch = []
+def pairwise(params,poolsize=20):
+    
+    seed(2)
+    
+    param_values = []
+    param_names = []
+    param_position = []
+    all_values = []
 
-# read file and populate into list
-with open(filename, "r") as rfile:
-    for linenum, line in enumerate(rfile):
-        parameterName, values = line.split(":")
-        values = values.split(",")
-        parameterName = parameterName.strip()
-        values = map(lambda x: x.strip(),values)
-        legal = []
-        for value in values:
-            num = len(parameterValues)
-            parameterValues.append(value)
-            legal.append(num)
-            parameterPositions.append(linenum)
-        parameterNames.append(parameterName)
-        legalValues.append(legal)
+    testsets = []
 
-# generate all all pairs
-for listnum, list1 in enumerate(legalValues):
-    for list2num in range(listnum+1, len(legalValues)):
-        list2 = legalValues[list2num]
-        for x,y in product(list1, list2):
-            allPairsDisplay.append((x,y))
+    # put data across lists
+    for param_name, param_value in params:
 
-allPairsDisplay.sort()
-unusedPairs = allPairsDisplay
+        param_num = len(param_names)
+        param_names.append(param_name)
 
-parameterValuesNum = len(parameterValues)
-parameterNum = len(parameterNames)
+        # convert param value to id
+        value_list = []
+        for value in param_value:
+            num = len(all_values)
+            all_values.append(value)
+            value_list.append(num)
+            param_position.append(param_num)
 
-# generate unused pair search
+        param_values.append(value_list)
 
-unusedCounts = [0 for i in range(parameterValuesNum)]
-for i in range(parameterValuesNum):
-    l = []
-    for j in range(parameterValuesNum):
-        if parameterPositions[i] < parameterPositions[j]:
-            l.append(1)
-            unusedCounts[i] += 1
-            unusedCounts[j] += 1
-        else:
-            l.append(0)
+    # generate all possible pair and mark of unused pair for searching
 
-    unusedPairsSearch.append(l)
+    all_pairs_num = 0
+    unused_pair_search = []
+    unused_count = [0]*len(all_values)
 
-# generate test sets
+    for i, list1 in enumerate(param_values):
 
-testSets = []
+        unused_pair = []
 
-while len(unusedPairs) > 0:
-    canidateSets = []
-    for canidate in range(poolSize):
+        for j, list2 in enumerate(param_values):
+            if i < j:
+                for x in list1:
+                    unused_count[x] += len(list2)
+                for y in list2:
+                    unused_count[y] += len(list1)
+                all_pairs_num += len(list1) * len(list2)
+                unused_pair += [1]*len(list2)
+            else:
+                unused_pair += [0]*len(list2)
 
-        testSet = [0] * parameterNum
+        unused_pair_search += [copy(unused_pair) for _ in range(len(list1))]
+
+    # while some pair have not been crossed
+
+    all_values_num = len(all_values)
+
+    while all_pairs_num > 0:
         
-        # find best pair
-        bestWeight = 0;
-        bestPair = (0,0);
-        for pair in unusedPairs:
-            x, y = pair
-            weight = unusedCounts[x] + unusedCounts[y]
-            if weight > bestWeight or weight == bestWeight and random.randint(0,1):
-                bestWeight = weight
-                bestPair = pair
+        # pick up best pair
+        best_value = -1
+        best_pair = (-1,-1)
 
-        # group of best pair
-        x, y = bestPair
-        firstPos = parameterPositions[x]
-        secondPos = parameterPositions[y]
+        for x in range(all_values_num):
+            for y in range(all_values_num):
+                if not unused_pair_search[x][y]:
+                    continue
+                value = unused_count[x] + unused_count[y]
+                if value > best_value:
+                    best_value = value
+                    best_pair = (x,y)
 
-        ordering = [i for i in range(parameterNum)]
-        ordering.remove(firstPos)
-        ordering.remove(secondPos)
-        random.shuffle(ordering)
+        best_x, best_y = best_pair
 
-        testSet[firstPos] = x
-        testSet[secondPos] = y
+        # find best testset
 
-        ordering = [firstPos, secondPos] + ordering
+        best_testset = []
+        best_testset_coverage = -1
 
-        for i, currPos in enumerate(ordering):
-            if i < 2:
+        for pool in range(poolsize):
+
+            testset = [best_x, best_y]
+
+            # generate order for finding more pair
+            param_x = param_position[best_x]
+            param_y = param_position[best_y]
+            orders = [param_x, param_y]
+            remain = [i for i in range(len(param_names)) if i != param_x and i != param_y]
+            shuffle(remain)
+            orders += remain
+
+            # find best pair for each order
+            for order in orders[2:]:
+
+                possible_value = param_values[order]
+                best_param_value = -1
+                best_pair_cross = -1
+
+                for value in possible_value:
+                    pair_cross = 0
+                    for test in testset:
+                        if unused_pair_search[value][test] or unused_pair_search[test][value]:
+                            pair_cross += 1
+
+                    if pair_cross > best_pair_cross:
+                        best_pair_cross = pair_cross
+                        best_param_value = value
+
+                testset.append(best_param_value)
+
+            # find coverage of this testset
+
+            coverage = 0
+            for i in testset:
+                for j in testset:
+                    if unused_pair_search[i][j]:
+                        coverage += 1
+
+            if coverage > best_testset_coverage:
+                best_testset_coverage = coverage
+                best_testset = testset
+
+        # got best testset, kill some pair out
+        for i in best_testset:
+            for j in best_testset:
+                if unused_pair_search[i][j]:
+                    unused_pair_search[i][j] = 0
+                    all_pairs_num -= 1
+
+        # add to testsets
+        testset_value = [all_values[i] for i in testset]
+        testsets.append(testset_value)
+
+
+    return {'params': param_names, 'tests': testsets}
+
+def main():
+
+    filename =  sys.argv[1]
+    input_list = []
+    with open(filename,"r") as f:
+        for line in f:
+            text = line.strip()
+            if not text:
                 continue
-            possiblieValues = legalValues[currPos]
-            currentCount = 0
-            highestCount = 0
-            bestJ = 0
-            for j in range(len(possiblieValues)):
-                currentCount = 0
-                for p in range(i):
-                    candidatePair = [possiblieValues[j], testSet[ordering[p]]]
-                    if unusedPairsSearch[candidatePair[0]][candidatePair[1]] or unusedPairsSearch[candidatePair[1]][candidatePair[0]]:
-                        currentCount += 1
-                if currentCount > highestCount or currentCount == highestCount and random.randint(0,1):
-                    highestCount = currentCount
-                    bestJ = j
-            testSet[currPos] = possiblieValues[bestJ]
-        canidateSets.append(testSet)
+            param_name, param_values = text.split(":")
+            param_name = param_name.strip()
+            param_values = param_values.split()
+            input_list.append((param_name,param_values))
 
-    # find best test among canidate
-    mostPairsCaptured = -1
-    mostPairsCapturedTest = []
-    for canidateSet in canidateSets:
-        # calculate pairs captured bt test
-        pairsCaptured = 0
-        for i in range(len(canidateSet)-1):
-            for j in range(i+1,len(canidateSet)):
-                if unusedPairsSearch[i][j]:
-                    pairsCaptured += 1
+    pairwised = pairwise(input_list)
 
-        if pairsCaptured > mostPairsCaptured or pairsCaptured == mostPairsCaptured and random.randint(0,1):
-            mostPairsCaptured = pairsCaptured
-            mostPairsCapturedTest = canidateSet
+    params = "\t".join(pairwised['params'])
+    print params
 
-    for i in mostPairsCapturedTest:
-        unusedCounts[i] -= 1
-        for j in mostPairsCapturedTest:
-            try:
-                unusedPairs.remove((i,j))
-            except ValueError:
-                pass
-            unusedPairsSearch[i][j] = 0
+    for test in pairwised["tests"]:
+        teststr = "\t".join(test)
+        print teststr
 
-    testSets.append(mostPairsCapturedTest)
-
-# print result
-print len(testSets), "tests"
-for test in testSets:
-    l = [parameterValues[x] for x in test]
-    print l
-
+if __name__ == '__main__':
+    main()
