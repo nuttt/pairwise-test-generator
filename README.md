@@ -21,7 +21,7 @@ python pairwise.py input-file.txt
 it will generate test and print result in terminal
 ```
 param1  param2	param3	param4
-a j	g	c
+a	j	g	c
 a	k	d	h
 b	j	d	i
 b	k	c	g
@@ -33,5 +33,6 @@ c	i	j	a
 d	g	a	j
 e	i	a	j
 f	g	j	a
+
 
 ```
